@@ -13,8 +13,10 @@
 #include <errno.h>
 #include <signal.h>
 
+#include "sd_string.h"
 #include "sd_socket.h"
 #include "sd_evloop.h"
+#include "sd_http.h"
 
 
 #endif

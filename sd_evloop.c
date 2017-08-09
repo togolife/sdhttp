@@ -42,14 +42,31 @@ void free_loop(event_loop *evloop) {
   free (evloop);
 }
 
-void resize_loop(event_loop *evloop) {
-  //ev->reg_fds = (fd_event *) realloc (ev->capacity, sizeof (fd_event));
-  return;
+int resize_loop(event_loop *evloop) {
+  int capacity = evloop->capacity + evloop->add_size;
+  fd_event *p = (fd_event *) realloc (evloop->reg_fds, capacity * sizeof (fd_event));
+  if (p == NULL) {
+    printf ("resize event loop failed!\n");
+    return -1;
+  }
+  evloop->reg_fds = p;
+  evloop->capacity += evloop->add_size;
+  int i = 0;
+  for (i = 1; i < evloop->add_size + 1; ++i) {
+    fd_event *p = evloop->reg_fds + i + evloop->capacity;
+    p->mask = 0;
+  }
+  return 0;
 }
 
 int add_fdevent(event_loop *evloop, int fd, int mask, READ_FUNC read_func,
   WRITE_FUNC write_func, EXCEP_FUNC excep_func) {
-  //if (fd > evloop->
+  if (fd > evloop->capacity) {
+    if (resize_loop (evloop) < 0) {
+      printf ("add fd event failed! fd is too large!\n");
+      return -1;
+    }
+  }
   if (evloop->reg_fds[fd].mask != 0) {
     printf ("add fd event failed!\n");
     return -1;
@@ -59,7 +76,7 @@ int add_fdevent(event_loop *evloop, int fd, int mask, READ_FUNC read_func,
   p->read_func = read_func;
   p->write_func = write_func;
   p->excep_func = excep_func;
-  p->message = NULL;
+  p->writ_mes = p->read_mes = p->addition = NULL;
   partial.add(evloop, fd, mask);
   return 0;
 }
@@ -68,7 +85,7 @@ void del_fdevent(event_loop *evloop, int fd, int event) {
   int del = 0;
   evloop->reg_fds[fd].mask &= ~event;
   if (evloop->reg_fds[fd].mask == 0) {
-    free (evloop->reg_fds[fd].message);
+    free (evloop->reg_fds[fd].writ_mes);
     del = 1;
   }
   partial.del(evloop, fd, event, del);
@@ -92,10 +109,10 @@ void deal_event(event_loop *evloop) {
       if (event & READ_EVENT) {
         evloop->reg_fds[i].read_func(i);
       }
-      if ((event & WRIT_EVENT) && evloop->reg_fds[i].message != NULL) {
-        evloop->reg_fds[i].write_func(i,evloop->reg_fds[i].message);
-        free (evloop->reg_fds[i].message);
-        evloop->reg_fds[i].message = NULL;
+      if ((event & WRIT_EVENT) && evloop->reg_fds[i].writ_mes != NULL && evloop->reg_fds[i].writ_mes->len != 0) {
+        evloop->reg_fds[i].write_func(i,evloop->reg_fds[i].writ_mes);
+        free_slice (evloop->reg_fds[i].writ_mes);
+        evloop->reg_fds[i].writ_mes = NULL;
       }
       if (event & EXCP_EVENT) {
         evloop->reg_fds[i].excep_func(i);
